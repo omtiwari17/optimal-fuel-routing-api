@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project spec / assessment instructions (do not commit)
+PROJECT_SPEC.md
+doc/
+agents.md
+
