@@ -17,6 +17,16 @@ US_CITIES_URL = 'https://raw.githubusercontent.com/kelvins/US-Cities-Database/ma
 # Canadian provinces present in North American freight data (out of US routing scope)
 CANADIAN_PROVINCES = {'AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT'}
 
+# City name aliases for 6 minor spelling variations or unincorporated neighborhoods
+CITY_ALIASES = {
+    ('port wentworth', 'GA'): ('savannah', 'GA'),
+    ('elizabethport', 'NJ'): ('elizabeth', 'NJ'),
+    ('brookpark', 'OH'): ('brook park', 'OH'),
+    ('evergreen', 'AL'): (31.4338, -86.9544),
+    ('henrico', 'VA'): ('richmond', 'VA'),
+    ('university park', 'IL'): (41.4464, -87.6853),
+}
+
 
 class Command(BaseCommand):
     help = (
@@ -110,6 +120,13 @@ class Command(BaseCommand):
 
             # Look up city centroid
             coords = city_lookup.get((city, state))
+            if not coords and (city, state) in CITY_ALIASES:
+                alias = CITY_ALIASES[(city, state)]
+                if isinstance(alias, tuple) and isinstance(alias[0], (int, float)):
+                    coords = alias
+                else:
+                    coords = city_lookup.get(alias)
+
             if coords:
                 lat, lon = coords
                 try:
