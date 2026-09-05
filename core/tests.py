@@ -10,6 +10,7 @@ from core.polyline_utils import (
     EARTH_RADIUS_MILES,
 )
 from core.station_matcher import StationMatcher
+from core.fuel_optimizer import FuelOptimizer, RouteNotFeasibleError
 
 
 class PolylineUtilsTestCase(TestCase):
@@ -42,7 +43,6 @@ class PolylineUtilsTestCase(TestCase):
 
     def test_compute_cumulative_distances_linear(self):
         """Cumulative distance must be monotonically increasing."""
-        # A straight line of 4 points moving North along longitude -90
         coords = [
             [-90.0, 30.0],
             [-90.0, 31.0],
@@ -54,22 +54,18 @@ class PolylineUtilsTestCase(TestCase):
         self.assertEqual(cum_dists[0], 0.0)
         for i in range(1, len(cum_dists)):
             self.assertGreater(cum_dists[i], cum_dists[i - 1])
-        # 1 degree of latitude is roughly 69 miles, so 3 degrees should be ~207 miles
         self.assertTrue(200.0 < cum_dists[-1] < 215.0)
 
     def test_sample_checkpoints(self):
         """Verify checkpoints sample at given interval and preserve start/end."""
-        # 10 points spaced roughly 30 miles apart
         coords = [[-90.0, 30.0 + (i * 0.45)] for i in range(10)]
         cum_dists = compute_cumulative_distances(coords)
         total_miles = cum_dists[-1]
 
         checkpoints = sample_checkpoints(coords, cum_dists, interval_miles=50.0)
         self.assertGreater(len(checkpoints), 1)
-        # Start checkpoint
         self.assertEqual(checkpoints[0]['mile'], 0.0)
         self.assertEqual(checkpoints[0]['index'], 0)
-        # End checkpoint
         self.assertEqual(checkpoints[-1]['mile'], round(total_miles, 2))
         self.assertEqual(checkpoints[-1]['index'], len(coords) - 1)
 
@@ -82,7 +78,6 @@ class PolylineUtilsTestCase(TestCase):
         ]
         cum_dists = compute_cumulative_distances(coords)
 
-        # Station at vertex 1: lat=35.5, lon=-91.0
         detour, mile, idx = project_station_onto_route(35.5, -91.0, coords, cum_dists)
         self.assertEqual(idx, 1)
         self.assertAlmostEqual(detour, 0.0, places=1)
@@ -97,7 +92,6 @@ class PolylineUtilsTestCase(TestCase):
         ]
         cum_dists = compute_cumulative_distances(coords)
 
-        # Station slightly North of vertex 1: lat=35.1, lon=-91.0 (~6.9 miles North)
         detour, mile, idx = project_station_onto_route(35.1, -91.0, coords, cum_dists)
         self.assertEqual(idx, 1)
         self.assertTrue(6.0 < detour < 8.0, f"Expected detour ~6.9 miles, got {detour}")
@@ -110,8 +104,6 @@ class StationMatcherTestCase(TestCase):
     """
 
     def setUp(self):
-        # Create a test route: moving East to West along lat 35.0
-        # Longitudes -90.0 to -92.0 (~113 miles)
         self.coords = [
             [-90.0, 35.0],
             [-90.5, 35.0],
@@ -120,7 +112,6 @@ class StationMatcherTestCase(TestCase):
             [-92.0, 35.0],
         ]
 
-        # Station 1: Near mile ~28 (on route)
         self.st1 = FuelStation.objects.create(
             opis_id=1001,
             name="Station Alpha",
@@ -132,8 +123,6 @@ class StationMatcherTestCase(TestCase):
             longitude=-90.5
         )
 
-        # Station 2: Near mile ~56 (5 miles North of route)
-        # 1 deg lat ~ 69 miles -> 0.07 deg lat ~ 4.8 miles
         self.st2 = FuelStation.objects.create(
             opis_id=1002,
             name="Station Beta",
@@ -145,7 +134,6 @@ class StationMatcherTestCase(TestCase):
             longitude=-91.0
         )
 
-        # Station 3: Far away (50 miles North of route) -> must be excluded
         self.st3 = FuelStation.objects.create(
             opis_id=1003,
             name="Station Gamma",
@@ -171,9 +159,9 @@ class StationMatcherTestCase(TestCase):
         )
 
         matched_ids = [m['id'] for m in matched]
-        self.assertIn(self.st1.id, matched_ids, "Station Alpha on route should be matched")
-        self.assertIn(self.st2.id, matched_ids, "Station Beta (5 mi off route) should be matched")
-        self.assertNotIn(self.st3.id, matched_ids, "Station Gamma (50 mi away) must be excluded")
+        self.assertIn(self.st1.id, matched_ids)
+        self.assertIn(self.st2.id, matched_ids)
+        self.assertNotIn(self.st3.id, matched_ids)
 
     def test_stations_sorted_by_route_mile(self):
         """Matched stations must be strictly sorted by ascending route_mile."""
@@ -199,3 +187,110 @@ class StationMatcherTestCase(TestCase):
 
         self.assertAlmostEqual(alpha['detour_miles'], 0.0, places=1)
         self.assertTrue(4.0 < beta['detour_miles'] < 6.0, f"Expected ~4.8 mi, got {beta['detour_miles']}")
+
+
+class FuelOptimizerTestCase(TestCase):
+    """
+    Unit tests for FuelOptimizer in core/fuel_optimizer.py.
+    """
+
+    def test_short_route_no_stops_needed(self):
+        """Trips <= 500 miles require 0 stops because vehicle starts with a full tank."""
+        result = FuelOptimizer.optimize(
+            candidate_stations=[
+                {'id': 1, 'name': 'S1', 'city': 'C1', 'state': 'MO', 'latitude': 37.0, 'longitude': -93.0, 'price_per_gallon': 3.19, 'route_mile': 150.0}
+            ],
+            total_distance_miles=350.0,
+            max_range_miles=500.0,
+            mpg=10.0
+        )
+        self.assertEqual(result['distance_miles'], 350.0)
+        self.assertEqual(result['total_gallons'], 35.0)
+        self.assertEqual(result['total_cost'], 0.0)
+        self.assertEqual(len(result['fuel_stops']), 0)
+
+    def test_two_stop_optimization(self):
+        """
+        Route: 950 miles.
+        Stations:
+        - A: 200 mi ($3.80)
+        - B: 380 mi ($3.20) <- cheapest in [0, 500] -> Stop 1
+        - C: 450 mi ($3.60)
+        - D: 600 mi ($3.45)
+        - E: 750 mi ($3.15) <- cheapest in [380, 880] -> Stop 2
+        From 750 mi, destination at 950 mi is reachable (950 - 750 = 200 <= 500).
+        """
+        candidates = [
+            {'id': 1, 'name': 'A', 'city': 'CA', 'state': 'MO', 'latitude': 37.0, 'longitude': -93.0, 'price_per_gallon': 3.80, 'route_mile': 200.0},
+            {'id': 2, 'name': 'B', 'city': 'CB', 'state': 'KS', 'latitude': 38.0, 'longitude': -95.0, 'price_per_gallon': 3.20, 'route_mile': 380.0},
+            {'id': 3, 'name': 'C', 'city': 'CC', 'state': 'KS', 'latitude': 38.5, 'longitude': -96.0, 'price_per_gallon': 3.60, 'route_mile': 450.0},
+            {'id': 4, 'name': 'D', 'city': 'CD', 'state': 'KS', 'latitude': 39.0, 'longitude': -98.0, 'price_per_gallon': 3.45, 'route_mile': 600.0},
+            {'id': 5, 'name': 'E', 'city': 'CE', 'state': 'CO', 'latitude': 39.5, 'longitude': -102.0, 'price_per_gallon': 3.15, 'route_mile': 750.0},
+        ]
+
+        result = FuelOptimizer.optimize(
+            candidate_stations=candidates,
+            total_distance_miles=950.0,
+            max_range_miles=500.0,
+            mpg=10.0
+        )
+
+        self.assertEqual(len(result['fuel_stops']), 2)
+        stop1 = result['fuel_stops'][0]
+        stop2 = result['fuel_stops'][1]
+
+        self.assertEqual(stop1['name'], 'B')
+        self.assertEqual(stop1['distance_from_start_miles'], 380.0)
+        self.assertEqual(stop1['gallons_purchased'], 38.0)
+        self.assertEqual(stop1['cost'], 121.60) # 38 * 3.20
+
+        self.assertEqual(stop2['name'], 'E')
+        self.assertEqual(stop2['distance_from_start_miles'], 750.0)
+        self.assertEqual(stop2['leg_distance_miles'], 370.0) # 750 - 380
+        self.assertEqual(stop2['gallons_purchased'], 37.0)
+        self.assertEqual(stop2['cost'], 116.55) # 37 * 3.15
+
+        # Final leg: (950 - 750) = 200 mi / 10 = 20 gal * 3.15 = $63.00
+        # Total cost: 121.60 + 116.55 + 63.00 = 301.15
+        self.assertEqual(result['total_cost'], 301.15)
+        self.assertEqual(result['total_gallons'], 95.0)
+
+    def test_tie_breaking_picks_furthest(self):
+        """When two stations in the reachable window have identical prices, pick the furthest one."""
+        candidates = [
+            {'id': 1, 'name': 'Station Near', 'city': 'C1', 'state': 'MO', 'latitude': 37.0, 'longitude': -93.0, 'price_per_gallon': 3.00, 'route_mile': 250.0},
+            {'id': 2, 'name': 'Station Far', 'city': 'C2', 'state': 'KS', 'latitude': 38.0, 'longitude': -95.0, 'price_per_gallon': 3.00, 'route_mile': 400.0},
+        ]
+        result = FuelOptimizer.optimize(
+            candidate_stations=candidates,
+            total_distance_miles=800.0,
+            max_range_miles=500.0,
+            mpg=10.0
+        )
+        self.assertEqual(result['fuel_stops'][0]['name'], 'Station Far')
+        self.assertEqual(result['fuel_stops'][0]['distance_from_start_miles'], 400.0)
+
+    def test_gap_exceeds_tank_range_raises_error(self):
+        """If gap between reachable stations exceeds 500 miles, raise RouteNotFeasibleError."""
+        candidates = [
+            {'id': 1, 'name': 'S1', 'city': 'C1', 'state': 'MO', 'latitude': 37.0, 'longitude': -93.0, 'price_per_gallon': 3.20, 'route_mile': 300.0},
+            # Gap of 550 miles between mile 300 and mile 850
+            {'id': 2, 'name': 'S2', 'city': 'C2', 'state': 'CO', 'latitude': 39.0, 'longitude': -102.0, 'price_per_gallon': 3.10, 'route_mile': 850.0},
+        ]
+        with self.assertRaises(RouteNotFeasibleError):
+            FuelOptimizer.optimize(
+                candidate_stations=candidates,
+                total_distance_miles=1000.0,
+                max_range_miles=500.0,
+                mpg=10.0
+            )
+
+    def test_no_stations_on_long_route_raises_error(self):
+        """Long route with zero stations must raise RouteNotFeasibleError."""
+        with self.assertRaises(RouteNotFeasibleError):
+            FuelOptimizer.optimize(
+                candidate_stations=[],
+                total_distance_miles=800.0,
+                max_range_miles=500.0,
+                mpg=10.0
+            )
