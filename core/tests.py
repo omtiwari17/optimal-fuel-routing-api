@@ -1,6 +1,10 @@
 import math
 from decimal import Decimal
+from unittest.mock import patch, MagicMock
 from django.test import TestCase
+from rest_framework.test import APIClient
+from rest_framework import status
+
 from core.models import FuelStation
 from core.polyline_utils import (
     haversine_distance,
@@ -11,6 +15,7 @@ from core.polyline_utils import (
 )
 from core.station_matcher import StationMatcher
 from core.fuel_optimizer import FuelOptimizer, RouteNotFeasibleError
+from core.routing_client import LocationNotFoundError, NoRouteFoundError, RoutingAPIError
 
 
 class PolylineUtilsTestCase(TestCase):
@@ -210,16 +215,7 @@ class FuelOptimizerTestCase(TestCase):
         self.assertEqual(len(result['fuel_stops']), 0)
 
     def test_two_stop_optimization(self):
-        """
-        Route: 950 miles.
-        Stations:
-        - A: 200 mi ($3.80)
-        - B: 380 mi ($3.20) <- cheapest in [0, 500] -> Stop 1
-        - C: 450 mi ($3.60)
-        - D: 600 mi ($3.45)
-        - E: 750 mi ($3.15) <- cheapest in [380, 880] -> Stop 2
-        From 750 mi, destination at 950 mi is reachable (950 - 750 = 200 <= 500).
-        """
+        """Route of 950 miles selects cheapest reachable stations."""
         candidates = [
             {'id': 1, 'name': 'A', 'city': 'CA', 'state': 'MO', 'latitude': 37.0, 'longitude': -93.0, 'price_per_gallon': 3.80, 'route_mile': 200.0},
             {'id': 2, 'name': 'B', 'city': 'CB', 'state': 'KS', 'latitude': 38.0, 'longitude': -95.0, 'price_per_gallon': 3.20, 'route_mile': 380.0},
@@ -242,21 +238,19 @@ class FuelOptimizerTestCase(TestCase):
         self.assertEqual(stop1['name'], 'B')
         self.assertEqual(stop1['distance_from_start_miles'], 380.0)
         self.assertEqual(stop1['gallons_purchased'], 38.0)
-        self.assertEqual(stop1['cost'], 121.60) # 38 * 3.20
+        self.assertEqual(stop1['cost'], 121.60)
 
         self.assertEqual(stop2['name'], 'E')
         self.assertEqual(stop2['distance_from_start_miles'], 750.0)
-        self.assertEqual(stop2['leg_distance_miles'], 370.0) # 750 - 380
+        self.assertEqual(stop2['leg_distance_miles'], 370.0)
         self.assertEqual(stop2['gallons_purchased'], 37.0)
-        self.assertEqual(stop2['cost'], 116.55) # 37 * 3.15
+        self.assertEqual(stop2['cost'], 116.55)
 
-        # Final leg: (950 - 750) = 200 mi / 10 = 20 gal * 3.15 = $63.00
-        # Total cost: 121.60 + 116.55 + 63.00 = 301.15
         self.assertEqual(result['total_cost'], 301.15)
         self.assertEqual(result['total_gallons'], 95.0)
 
     def test_tie_breaking_picks_furthest(self):
-        """When two stations in the reachable window have identical prices, pick the furthest one."""
+        """When two stations in reachable window have identical prices, pick the furthest one."""
         candidates = [
             {'id': 1, 'name': 'Station Near', 'city': 'C1', 'state': 'MO', 'latitude': 37.0, 'longitude': -93.0, 'price_per_gallon': 3.00, 'route_mile': 250.0},
             {'id': 2, 'name': 'Station Far', 'city': 'C2', 'state': 'KS', 'latitude': 38.0, 'longitude': -95.0, 'price_per_gallon': 3.00, 'route_mile': 400.0},
@@ -274,7 +268,6 @@ class FuelOptimizerTestCase(TestCase):
         """If gap between reachable stations exceeds 500 miles, raise RouteNotFeasibleError."""
         candidates = [
             {'id': 1, 'name': 'S1', 'city': 'C1', 'state': 'MO', 'latitude': 37.0, 'longitude': -93.0, 'price_per_gallon': 3.20, 'route_mile': 300.0},
-            # Gap of 550 miles between mile 300 and mile 850
             {'id': 2, 'name': 'S2', 'city': 'C2', 'state': 'CO', 'latitude': 39.0, 'longitude': -102.0, 'price_per_gallon': 3.10, 'route_mile': 850.0},
         ]
         with self.assertRaises(RouteNotFeasibleError):
@@ -294,3 +287,128 @@ class FuelOptimizerTestCase(TestCase):
                 max_range_miles=500.0,
                 mpg=10.0
             )
+
+
+class RouteAPITestCase(TestCase):
+    """
+    End-to-end API tests for POST /api/route/ endpoint.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        self.url = '/api/route/'
+
+    def test_missing_payload_returns_400(self):
+        """POST with missing or empty payload returns 400 Bad Request."""
+        response = self.client.post(self.url, {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('details', response.data)
+
+    def test_identical_start_finish_returns_400(self):
+        """POST with identical start and finish returns 400 Bad Request."""
+        response = self.client.post(
+            self.url,
+            {'start': 'Denver, CO', 'finish': 'Denver, CO'},
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('details', response.data)
+
+    @patch('core.views.RoutingClient')
+    def test_location_not_found_returns_400(self, mock_routing_client_cls):
+        """When an address cannot be geocoded, return 400 Bad Request."""
+        mock_instance = MagicMock()
+        mock_instance.geocode.side_effect = LocationNotFoundError("Could not find location.")
+        mock_routing_client_cls.return_value = mock_instance
+
+        response = self.client.post(
+            self.url,
+            {'start': 'FakeUnknownCity12345', 'finish': 'Denver, CO'},
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+
+    @patch('core.views.RoutingClient')
+    def test_no_route_found_returns_400(self, mock_routing_client_cls):
+        """When routing engine cannot connect points by road, return 400 Bad Request."""
+        mock_instance = MagicMock()
+        mock_instance.geocode.side_effect = [(21.3069, -157.8583), (37.7749, -122.4194)]
+        mock_instance.get_route.side_effect = NoRouteFoundError("No driving route.")
+        mock_routing_client_cls.return_value = mock_instance
+
+        response = self.client.post(
+            self.url,
+            {'start': 'Honolulu, HI', 'finish': 'San Francisco, CA'},
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+
+    @patch('core.views.RoutingClient')
+    def test_successful_route_api_call(self, mock_routing_client_cls):
+        """End-to-end test of successful POST /api/route/ response structure."""
+        # Create candidate stations along the route ensuring <= 500 mi gaps
+        FuelStation.objects.create(
+            opis_id=5001,
+            name="Test Express Stop 1",
+            address="Exit 100",
+            city="Midway",
+            state="KS",
+            price_per_gallon=Decimal("3.159"),
+            latitude=38.5,
+            longitude=-97.0
+        )
+        FuelStation.objects.create(
+            opis_id=5002,
+            name="Test Express Stop 2",
+            address="Exit 250",
+            city="Colby",
+            state="KS",
+            price_per_gallon=Decimal("3.059"),
+            latitude=39.2,
+            longitude=-101.5
+        )
+
+        mock_instance = MagicMock()
+        mock_instance.geocode.side_effect = [
+            (37.2, -93.3),  # Springfield, MO
+            (39.7, -105.0), # Denver, CO
+        ]
+        mock_instance.get_route.return_value = {
+            'distance_miles': 680.0,
+            'duration_hours': 10.5,
+            'geojson': {
+                'type': 'LineString',
+                'coordinates': [
+                    [-93.3, 37.2],
+                    [-97.0, 38.5],
+                    [-101.5, 39.2],
+                    [-105.0, 39.7],
+                ]
+            },
+            'coordinates': [
+                [-93.3, 37.2],
+                [-97.0, 38.5],
+                [-101.5, 39.2],
+                [-105.0, 39.7],
+            ]
+        }
+        mock_routing_client_cls.return_value = mock_instance
+
+        response = self.client.post(
+            self.url,
+            {'start': 'Springfield, MO', 'finish': 'Denver, CO'},
+            format='json'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.data
+        self.assertIn('distance_miles', data)
+        self.assertIn('total_cost', data)
+        self.assertIn('total_gallons', data)
+        self.assertIn('fuel_stops', data)
+        self.assertIn('route_geojson', data)
+        self.assertEqual(data['distance_miles'], 680.0)
+        self.assertEqual(data['total_gallons'], 68.0)
+        self.assertEqual(data['route_geojson']['type'], 'LineString')

@@ -1,5 +1,6 @@
 from django.urls import path
+from core.views import RouteAPIView
 
 urlpatterns = [
-    # API endpoints will be added here
+    path('route/', RouteAPIView.as_view(), name='api-route'),
 ]
