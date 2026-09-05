@@ -222,3 +222,8 @@ PROJECT_SPEC.md
 doc/
 agents.md
 
+# Postman local workspace cache
+.postman/
+postman/
+
+

@@ -51,7 +51,48 @@ A production-ready Django REST Framework API that calculates the optimal driving
 
 ---
 
-## 3. Quickstart & Installation
+## 3. Project Structure
+
+```text
+optimal-fuel-routing-api/
+├── config/                          # Django project configuration
+│   ├── __init__.py
+│   ├── settings.py                  # Settings (REST framework, CORS, templates)
+│   ├── urls.py                      # Root URL routing (UI & API endpoints)
+│   ├── wsgi.py                      # WSGI entrypoint
+│   └── asgi.py                      # ASGI entrypoint
+├── core/                            # Core application
+│   ├── __init__.py
+│   ├── models.py                    # FuelStation model with spatial composite indices
+│   ├── serializers.py               # RouteRequest, FuelStop, & RouteResponse serializers
+│   ├── views.py                     # RouteAPIView (POST /api/route/) & HTMX UI views
+│   ├── urls.py                      # App-level URL routes
+│   ├── routing_client.py            # OpenRouteService client (directions + geocoding)
+│   ├── polyline_utils.py            # Haversine, cumulative dists & windowed projection
+│   ├── station_matcher.py           # SQLite bounding-box corridor candidate matcher
+│   ├── fuel_optimizer.py            # 500-mile lookahead greedy refuel optimizer
+│   ├── tests.py                     # 25 unit and integration tests
+│   └── management/
+│       └── commands/
+│           └── geocode_stations.py  # Two-tier offline geocoder (Census + City Centroids)
+├── templates/                       # Minimal HTMX + Tailwind frontend (zero build step)
+│   ├── index.html                   # Main interactive route planner page
+│   └── partials/
+│       ├── results.html             # Swappable HTMX route results & fuel stop table
+│       └── error.html               # Swappable HTMX error alert banner
+├── data/                            # Dataset & offline geocoding gazetteer
+│   ├── fuel-prices-for-be-assessment.csv  # Raw dataset (8,151 truck stops with retail prices)
+│   └── us_cities.csv                # USGS/Census ~30k US populated place coordinates
+├── postman_collection.json          # Pre-configured Postman collection (6 test requests)
+├── requirements.txt                 # Python dependencies
+├── manage.py                        # Django CLI entrypoint
+├── .env.example                     # Environment variables template
+└── README.md                        # Comprehensive project documentation
+```
+
+---
+
+## 4. Quickstart & Installation
 
 ### Prerequisites
 - Python 3.11+
@@ -78,12 +119,19 @@ pip install -r requirements.txt
 ```
 
 ### 3. Configure Environment Variables
-Create a `.env` file in the project root:
+Copy `.env.example` to create your `.env` file:
+```bash
+# Windows:
+copy .env.example .env
+# macOS / Linux:
+cp .env.example .env
+```
+Add your free OpenRouteService API key to `.env`:
 ```env
-SECRET_KEY=your-django-secret-key-here
+ORS_API_KEY=your-openrouteservice-api-key-here
+SECRET_KEY=django-insecure-development-key-change-in-production
 DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
-ORS_API_KEY=your-openrouteservice-api-key-here
 ```
 
 ### 4. Database Setup & Pre-Populated Stations
@@ -98,12 +146,12 @@ python manage.py geocode_stations
 ```
 
 ### 5. Run Automated Tests
-Execute the 22-test unit and integration test suite:
+Execute the comprehensive 25-test unit and integration test suite:
 ```bash
 python manage.py test core
 ```
 ```text
-Ran 22 tests in 0.053s
+Ran 25 tests in 0.068s
 OK
 ```
 
@@ -111,11 +159,12 @@ OK
 ```bash
 python manage.py runserver
 ```
-The API is now live at `http://127.0.0.1:8000/api/route/`.
+- **Interactive Web UI**: Open `http://127.0.0.1:8000/` in your browser.
+- **REST API Endpoint**: Send requests to `http://127.0.0.1:8000/api/route/`.
 
 ---
 
-## 4. API Specification
+## 5. API Specification
 
 ### Endpoint: `POST /api/route/`
 
@@ -188,7 +237,22 @@ Copy the `route_geojson` object and paste it into [geojson.io](https://geojson.i
 
 ---
 
-## 5. HTTP Status Codes & Error Handling
+## 6. Interactive Web UI
+
+The project includes an interactive web interface running at the root URL (`http://127.0.0.1:8000/`), built with **HTMX** and **Tailwind CSS** (zero npm, zero Node.js, and zero build steps required):
+
+- **Origin & Destination Form**: Supports city names (e.g. `Springfield, MO`) and raw coordinates (`lat, lon`).
+- **1-Click Presets**: Pre-configured buttons for:
+  - `Springfield, MO` &rarr; `Denver, CO` (765 miles - standard assessment route)
+  - `Chicago, IL` &rarr; `Indianapolis, IN` (< 500 miles - zero stops test)
+  - `Miami, FL` &rarr; `Seattle, WA` (3,335 miles - coast-to-coast route)
+- **Real-Time Metric Cards**: Total driving distance, total fuel cost, gallons pumped, and refuel stop count.
+- **Stops Breakdown Table**: Each recommended station with location, route mile marker, price per gallon, gallons pumped, and leg cost.
+- **Copy GeoJSON Button**: 1-click clipboard copy to paste directly into [geojson.io](https://geojson.io) for instant map visualization.
+
+---
+
+## 7. HTTP Status Codes & Error Handling
 
 | Status Code | Reason | Example Response |
 |---|---|---|
@@ -201,17 +265,17 @@ Copy the `route_geojson` object and paste it into [geojson.io](https://geojson.i
 
 ---
 
-## 6. Offline Data Pipeline & Geocoding Analysis
+## 8. Offline Data Pipeline & Geocoding Analysis
 
-The dataset `data/fuel-prices-for-be-assessment.csv` contains 8,151 records with truck stop names, highway exit addresses, cities, states, and retail diesel prices—but **no geographic coordinates**.
+The dataset `data/fuel-prices-for-be-assessment.csv` contains 8,151 records with truck stop names, highway exit addresses, cities, states, and retail diesel prices, but **no geographic coordinates**.
 
 ### The Two-Tier Geocoding Strategy
-1. **Tier 1 — US Census Bureau Batch Geocoder**:
+1. **Tier 1 - US Census Bureau Batch Geocoder**:
    - Submits records in batches of 1,000 to the official US Census Geocoding API (`https://geocoding.geo.census.gov/geocoder/`).
    - Yielded **591 exact civic street-level matches** (7.2% match rate).
    - *Why 7.2%?* The US Census TIGER database requires a specific civic street number (e.g. `100 Main St`). Commercial truck stops record highway intersections and ramp exits (e.g. `"I-44, EXIT 283 & US-69"`), which standard municipal street parcel databases do not index.
-2. **Tier 2 — Offline City Centroid Database (`data/us_cities.csv`)**:
-   - Sourced from the **USGS GNIS (Geographic Names Information System)** and the **US Census Bureau Gazetteer** (MIT Licensed, ~30,000 populated places down to hamlets of 30–450 residents).
+2. **Tier 2 - Offline City Centroid Database (`data/us_cities.csv`)**:
+   - Sourced from the **USGS GNIS (Geographic Names Information System)** and the **US Census Bureau Gazetteer** (MIT Licensed, ~30,000 populated places down to hamlets of 30-450 residents).
    - Resolved **6,942 truck stops** to exact municipal coordinates.
    - 6 minor municipality aliases (e.g. `"Brookpark, OH"` $\to$ `"Brook Park, OH"`, `"Elizabethport, NJ"` $\to$ `"Elizabeth, NJ"`) resolved the remaining edge cases.
 3. **Exclusion of Canadian Stations**:
@@ -223,7 +287,7 @@ The dataset `data/fuel-prices-for-be-assessment.csv` contains 8,151 records with
 
 ---
 
-## 7. Refuel Optimization Algorithm: Greedy vs. Dynamic Programming
+## 9. Refuel Optimization Algorithm: Greedy vs. Dynamic Programming
 
 ### Problem Formulation
 - The truck travels along a 1D highway polyline from mile $0.0$ to $D_{\text{total}}$.
@@ -256,7 +320,7 @@ The dataset `data/fuel-prices-for-be-assessment.csv` contains 8,151 records with
 
 ---
 
-## 8. Performance Optimizations
+## 10. Performance Optimizations
 
 1. **Strict 1 Directions Call**: The API calls OpenRouteService's Directions endpoint exactly once per request.
 2. **Segmented Checkpoint Bounding Boxes**:
@@ -270,7 +334,7 @@ The dataset `data/fuel-prices-for-be-assessment.csv` contains 8,151 records with
 
 ---
 
-## 9. Postman Collection
+## 11. Postman Collection
 
 A complete Postman collection is included in the repository:
 `postman_collection.json`
@@ -290,7 +354,7 @@ A complete Postman collection is included in the repository:
 
 ---
 
-## 10. Known Assumptions & Limitations (Spec §11)
+## 12. Known Assumptions & Limitations (Spec Section 11)
 
 1. **Full Tank at Start**: The vehicle is assumed to have a full tank (500 miles of fuel) at the departure point.
 2. **Corridor Search Radius**: Fuel stations are searched within a default 10.0-mile lateral radius of the highway corridor. Stations further off the highway are excluded to prevent excessive detour time and mileage.
