@@ -1,0 +1,14 @@
+$kind: http-request
+description: Tests providing latitude/longitude coordinates directly. The API parses them via regex and completely skips the external geocoding API call.
+url: "{{base_url}}/api/route/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "start": "37.197274, -93.280740",
+      "finish": "39.740959, -104.985798"
+    }
+order: 4000

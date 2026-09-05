@@ -1,0 +1,11 @@
+# Use this workspace to collaborate
+workspace:
+  id: 23177532-d5b2-425a-823d-8a7e1b238be0
+
+localResources:
+  collections:
+    - ../postman_collection.json
+
+cloudResources:
+  collections:
+    ../postman/collections/Optimal Fuel Routing API: a7ab9cb1-d7a6-43f0-8aee-3d3d49889c44

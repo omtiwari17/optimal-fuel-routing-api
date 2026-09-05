@@ -1,0 +1,15 @@
+$kind: http-request
+name: 1. Standard Route (Springfield, MO -> Denver, CO)
+description: Calculates driving route (765 miles), matches truck stops along highway corridor, and selects optimal stops within 500-mile tank range.
+url: "{{base_url}}/api/route/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "start": "Springfield, MO",
+      "finish": "Denver, CO"
+    }
+order: 1000

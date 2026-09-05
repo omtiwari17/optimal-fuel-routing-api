@@ -1,0 +1,15 @@
+$kind: http-request
+name: "5. Error: Identical Start and Finish"
+description: Tests serializer validation error when start and finish are identical (returns HTTP 400 Bad Request).
+url: "{{base_url}}/api/route/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "start": "Denver, CO",
+      "finish": "Denver, CO"
+    }
+order: 5000

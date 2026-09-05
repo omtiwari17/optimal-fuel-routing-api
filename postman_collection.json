@@ -1,0 +1,191 @@
+{
+	"info": {
+		"_postman_id": "8f8b0561-39fa-47cb-9c12-32a5bc651234",
+		"name": "Optimal Fuel Routing API",
+		"description": "Postman collection for testing the Fuel Route Optimizer API (take-home backend assessment).",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "1. Standard Route (Springfield, MO -> Denver, CO)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"start\": \"Springfield, MO\",\n  \"finish\": \"Denver, CO\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/route/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"route",
+						""
+					]
+				},
+				"description": "Calculates driving route (765 miles), matches truck stops along highway corridor, and selects optimal stops within 500-mile tank range."
+			},
+			"response": []
+		},
+		{
+			"name": "2. Short Route (< 500 mi, Zero Stops) (Chicago -> Indianapolis)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"start\": \"Chicago, IL\",\n  \"finish\": \"Indianapolis, IN\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/route/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"route",
+						""
+					]
+				},
+				"description": "Route of ~180 miles. Since vehicle starts with a full tank (500 miles range), zero fuel stops are required and total_cost is $0.00."
+			},
+			"response": []
+		},
+		{
+			"name": "3. Coast-to-Coast Route (Miami, FL -> Seattle, WA)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"start\": \"Miami, FL\",\n  \"finish\": \"Seattle, WA\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/route/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"route",
+						""
+					]
+				},
+				"description": "Cross-country diagonal route of ~3,335 miles. Demonstrates checkpoint-based spatial search and multi-stop greedy optimization."
+			},
+			"response": []
+		},
+		{
+			"name": "4. Raw Coordinates Input",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"start\": \"37.197274, -93.280740\",\n  \"finish\": \"39.740959, -104.985798\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/route/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"route",
+						""
+					]
+				},
+				"description": "Tests providing latitude/longitude coordinates directly. The API parses them via regex and completely skips the external geocoding API call."
+			},
+			"response": []
+		},
+		{
+			"name": "5. Error: Identical Start and Finish",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"start\": \"Denver, CO\",\n  \"finish\": \"Denver, CO\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/route/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"route",
+						""
+					]
+				},
+				"description": "Tests serializer validation error when start and finish are identical (returns HTTP 400 Bad Request)."
+			},
+			"response": []
+		},
+		{
+			"name": "6. Error: Unknown Location Name",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"start\": \"NonExistentPlaceName12345XYZ\",\n  \"finish\": \"Denver, CO\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/route/",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"route",
+						""
+					]
+				},
+				"description": "Tests error response when location cannot be geocoded (returns HTTP 400 Bad Request)."
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://127.0.0.1:8000",
+			"type": "string"
+		}
+	]
+}

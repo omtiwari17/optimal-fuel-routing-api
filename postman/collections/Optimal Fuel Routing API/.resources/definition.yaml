@@ -1,0 +1,4 @@
+$kind: collection
+description: Postman collection for testing the Fuel Route Optimizer API (take-home backend assessment).
+variables:
+  base_url: http://127.0.0.1:8000

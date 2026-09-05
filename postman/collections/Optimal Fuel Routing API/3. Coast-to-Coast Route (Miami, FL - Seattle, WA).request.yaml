@@ -1,0 +1,15 @@
+$kind: http-request
+name: 3. Coast-to-Coast Route (Miami, FL -> Seattle, WA)
+description: Cross-country diagonal route of ~3,335 miles. Demonstrates checkpoint-based spatial search and multi-stop greedy optimization.
+url: "{{base_url}}/api/route/"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "start": "Miami, FL",
+      "finish": "Seattle, WA"
+    }
+order: 3000
