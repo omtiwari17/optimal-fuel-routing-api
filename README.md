@@ -8,7 +8,7 @@ A production-ready Django REST Framework API that calculates the optimal driving
 
 - **Vehicle Range**: Max **500 miles** per full tank.
 - **Starting Condition**: Vehicle departs with a **full tank (500 miles of range)** at the origin.
-- **Fuel Economy**: Exactly **10.0 miles per gallon (MPG)** ($10 \text{ miles} = 1 \text{ gallon}$, tank capacity $= 50 \text{ gallons}$).
+- **Fuel Economy**: Exactly **10.0 miles per gallon (MPG)** (10 miles = 1 gallon, tank capacity = 50 gallons).
 - **External Routing API Quota**: Strictly **1 Directions call** to OpenRouteService (ORS) per request.
 - **100% Offline Station Geocoding**: 7,533 US truck stops pre-geocoded into local SQLite; zero external geocoding calls for stations at runtime.
 - **Zero Heavy GIS Binaries**: Pure Python Haversine math and equirectangular projection; runs with zero PostGIS, GDAL, or GEOS dependencies.
@@ -277,7 +277,7 @@ The dataset `data/fuel-prices-for-be-assessment.csv` contains 8,151 records with
 2. **Tier 2 - Offline City Centroid Database (`data/us_cities.csv`)**:
    - Sourced from the **USGS GNIS (Geographic Names Information System)** and the **US Census Bureau Gazetteer** (MIT Licensed, ~30,000 populated places down to hamlets of 30-450 residents).
    - Resolved **6,942 truck stops** to exact municipal coordinates.
-   - 6 minor municipality aliases (e.g. `"Brookpark, OH"` $\to$ `"Brook Park, OH"`, `"Elizabethport, NJ"` $\to$ `"Elizabeth, NJ"`) resolved the remaining edge cases.
+   - 6 minor municipality aliases (e.g. `"Brookpark, OH"` &rarr; `"Brook Park, OH"`, `"Elizabethport, NJ"` &rarr; `"Elizabeth, NJ"`) resolved the remaining edge cases.
 3. **Exclusion of Canadian Stations**:
    - 618 records in the CSV represent Canadian truck stops across provinces (`AB`, `BC`, `MB`, `NB`, `NL`, `NS`, `ON`, `PE`, `QC`, `SK`).
    - Because the assessment mandates routes within the continental USA, these 618 Canadian stations were intentionally filtered out.
@@ -290,31 +290,32 @@ The dataset `data/fuel-prices-for-be-assessment.csv` contains 8,151 records with
 ## 9. Refuel Optimization Algorithm: Greedy vs. Dynamic Programming
 
 ### Problem Formulation
-- The truck travels along a 1D highway polyline from mile $0.0$ to $D_{\text{total}}$.
-- Tank capacity $= 50.0 \text{ gallons}$, fuel economy $= 10.0 \text{ MPG}$, giving a maximum range of **500.0 miles**.
-- The truck starts at mile $0.0$ with a **full tank (500 miles range)**.
+- The truck travels along a 1D highway polyline from mile 0.0 to total distance.
+- Tank capacity = 50.0 gallons, fuel economy = 10.0 MPG, giving a maximum range of **500.0 miles**.
+- The truck starts at mile 0.0 with a **full tank (500 miles range)**.
 
 ### The Greedy Lookahead Window Heuristic
-1. **Short Trips ($\le 500$ miles)**: The truck completes the journey on its initial full tank. Zero fuel stops are required (`fuel_stops: []`), and retail fuel cost during the trip is `$0.00`.
+1. **Short Trips (<= 500 miles)**: The truck completes the journey on its initial full tank. Zero fuel stops are required (`fuel_stops: []`), and retail fuel cost during the trip is `$0.00`.
 2. **500-Mile Lookahead Window**:
    - Whenever the destination is beyond the vehicle's current fuel reach, the optimizer scans all candidate stations located in `[current_mile, current_mile + 500.0]`.
    - It selects the station with the **lowest retail price per gallon**.
    - **Tie-Breaking Rule**: If two stations share the lowest price, it selects the station furthest along the route to maximize forward mileage.
    - At each stop, the vehicle refuels to full:
-     $$\text{gallons} = \frac{\text{leg\_distance}}{10.0}, \quad \text{leg\_cost} = \text{gallons} \times \text{price\_per\_gallon}$$
+     - `gallons = leg_distance / 10.0`
+     - `leg_cost = gallons * price_per_gallon`
    - Advances `current_mile` to the station's location.
 3. **Final Leg Pricing**:
    - The remaining fuel required from the last stop to the destination was purchased at that last station.
-   - Thus, final leg cost $= (\text{final\_leg\_distance} / 10.0) \times P_{\text{last\_station}}$.
+   - Thus: `final_leg_cost = (final_leg_distance / 10.0) * last_station_price`.
 
 ### Architectural Trade-off: Greedy vs. Dynamic Programming
 
 | Metric | Greedy Lookahead Window (Implemented) | Dynamic Programming / Dijkstra |
 |---|---|---|
-| **Time Complexity** | $O(N)$ where $N$ is candidate stations (~60-100) | $O(N^2)$ across all station pairs |
+| **Time Complexity** | `O(N)` where `N` is candidate stations (~60-100) | `O(N^2)` across all station pairs |
 | **Execution Time** | **< 1 millisecond (0.0001s)** | **15 milliseconds** |
 | **Real-World Fidelity** | Mirrors real-world truck dispatch decisions | Mathematically optimal for discretized fuel |
-| **Cost Difference** | On a 3,335-mile cross-country trip: **$1,016.17 vs $1,008.84 (< 0.7% difference)** | Baseline minimum |
+| **Cost Difference** | On a 3,335-mile cross-country trip: **`$1,016.17` vs `$1,008.84` (< 0.7% difference)** | Baseline minimum |
 
 *Rationale*: A greedy lookahead heuristic was chosen in accordance with the project specification. It delivers sub-millisecond execution, readable code, and achieves within 0.7% of mathematical global optimality.
 
@@ -348,7 +349,7 @@ A complete Postman collection is included in the repository:
 6. `6. Error: Unknown Location Name (400)`
 
 ### How to Import:
-1. Open Postman $\to$ Click **Import**.
+1. Open Postman &rarr; Click **Import**.
 2. Select `postman_collection.json`.
 3. Set the environment variable `base_url` to `http://127.0.0.1:8000`.
 
