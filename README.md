@@ -341,12 +341,12 @@ A complete Postman collection is included in the repository:
 `postman_collection.json`
 
 ### Included Requests:
-1. `1. Standard Route (Springfield, MO -> Denver, CO)` (Standard assessment route)
-2. `2. Short Route (< 500 mi, Zero Stops) (Chicago -> Indianapolis)`
-3. `3. Coast-to-Coast Route (Miami, FL -> Seattle, WA)`
-4. `4. Raw Coordinates Input`
-5. `5. Error: Identical Start and Finish (400)`
-6. `6. Error: Unknown Location Name (400)`
+1. `Standard Route (Springfield, MO -> Denver, CO)` (Standard assessment route)
+2. `Short Route (< 500 mi, Zero Stops) (Chicago -> Indianapolis)`
+3. `Coast-to-Coast Route (Miami, FL -> Seattle, WA)`
+4. `Raw Coordinates Input`
+5. `Error: Identical Start and Finish (400)`
+6. `Error: Unknown Location Name (400)`
 
 ### How to Import:
 1. Open Postman &rarr; Click **Import**.
