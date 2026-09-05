@@ -1,4 +1,6 @@
+import json
 import logging
+from django.shortcuts import render
 from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -18,6 +20,34 @@ from core.station_matcher import StationMatcher
 from core.fuel_optimizer import FuelOptimizer, RouteNotFeasibleError
 
 logger = logging.getLogger(__name__)
+
+
+def home_view(request):
+    """Renders the minimal interactive HTMX demo interface."""
+    return render(request, 'index.html')
+
+
+def ui_route_view(request):
+    """
+    Thin HTMX wrapper view that invokes RouteAPIView and returns
+    HTML partials for dynamic swapping into #results without a full page reload.
+    """
+    api_view = RouteAPIView.as_view()
+    response = api_view(request)
+
+    if response.status_code == status.HTTP_200_OK:
+        geojson_str = json.dumps(response.data.get('route_geojson', {}))
+        return render(request, 'partials/results.html', {
+            'data': response.data,
+            'geojson_str': geojson_str,
+        })
+    else:
+        error_msg = response.data.get('error', 'An error occurred while calculating the route.')
+        details = response.data.get('details', '')
+        return render(request, 'partials/error.html', {
+            'error_message': error_msg,
+            'details': details,
+        }, status=response.status_code)
 
 
 class RouteAPIView(APIView):

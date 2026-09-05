@@ -1,0 +1,138 @@
+<!-- Summary Metrics Grid -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="bg-slate-800/90 border border-slate-700/80 rounded-xl p-4 shadow">
+    <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Distance</span>
+    <p class="text-2xl font-black text-white mt-1">{{ data.distance_miles }} <span class="text-sm font-normal text-slate-400">mi</span></p>
+    <span class="text-xs text-slate-500">Highway route</span>
+  </div>
+
+  <div class="bg-slate-800/90 border border-slate-700/80 rounded-xl p-4 shadow">
+    <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Fuel Cost</span>
+    <p class="text-2xl font-black text-emerald-400 mt-1">${{ data.total_cost }}</p>
+    <span class="text-xs text-slate-500">Cost-optimized</span>
+  </div>
+
+  <div class="bg-slate-800/90 border border-slate-700/80 rounded-xl p-4 shadow">
+    <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Fuel Consumed</span>
+    <p class="text-2xl font-black text-white mt-1">{{ data.total_gallons }} <span class="text-sm font-normal text-slate-400">gal</span></p>
+    <span class="text-xs text-slate-500">@ 10.0 MPG</span>
+  </div>
+
+  <div class="bg-slate-800/90 border border-slate-700/80 rounded-xl p-4 shadow">
+    <span class="text-xs font-medium text-slate-400 uppercase tracking-wider">Fuel Stops</span>
+    <p class="text-2xl font-black text-orange-400 mt-1">{{ data.fuel_stops|length }} <span class="text-sm font-normal text-slate-400">stops</span></p>
+    <span class="text-xs text-slate-500">500-mi tank range</span>
+  </div>
+</div>
+
+<!-- Special Alert for Short Trips (<= 500 mi) -->
+{% if not data.fuel_stops %}
+<div class="bg-emerald-950/40 border border-emerald-800/60 rounded-xl p-5 text-emerald-300 flex items-start space-x-3">
+  <div class="w-8 h-8 rounded-lg bg-emerald-800/50 flex items-center justify-center text-emerald-300 shrink-0">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  </div>
+  <div>
+    <h4 class="font-bold text-sm text-emerald-200">Zero Refuel Stops Required!</h4>
+    <p class="text-xs text-emerald-400/90 mt-0.5">
+      The total route distance ({{ data.distance_miles }} miles) is within the vehicle's starting full tank range of 500 miles. The truck arrives at the destination directly without stopping for fuel, incurring $0.00 in retail fuel expenses during the journey.
+    </p>
+  </div>
+</div>
+{% endif %}
+
+<!-- Recommended Fuel Stops List -->
+{% if data.fuel_stops %}
+<div class="bg-slate-800/80 border border-slate-700 rounded-xl overflow-hidden shadow-lg">
+  <div class="px-5 py-4 border-b border-slate-700/80 flex items-center justify-between">
+    <h3 class="font-bold text-white text-sm flex items-center space-x-2">
+      <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14V6a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2h8a2 2 0 002-2v-3m2-3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+      <span>Recommended Fuel Stops</span>
+      <span class="px-2 py-0.5 rounded-full text-xs bg-orange-500/20 text-orange-400 font-semibold">
+        {{ data.fuel_stops|length }} stop{{ data.fuel_stops|length|pluralize }}
+      </span>
+    </h3>
+    <span class="text-xs text-slate-400">Cheapest stations in each 500-mile window</span>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full text-left text-xs text-slate-300">
+      <thead class="bg-slate-900/60 text-slate-400 uppercase tracking-wider border-b border-slate-700/60">
+        <tr>
+          <th class="py-3 px-4">Stop</th>
+          <th class="py-3 px-4">Station &amp; Location</th>
+          <th class="py-3 px-4 text-right">Route Mile</th>
+          <th class="py-3 px-4 text-right">Leg Distance</th>
+          <th class="py-3 px-4 text-right">Diesel Price</th>
+          <th class="py-3 px-4 text-right">Gallons Pumped</th>
+          <th class="py-3 px-4 text-right">Leg Cost</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-slate-700/50">
+        {% for stop in data.fuel_stops %}
+        <tr class="hover:bg-slate-700/30 transition">
+          <td class="py-3 px-4 font-bold text-orange-400">
+            #{{ forloop.counter }}
+          </td>
+          <td class="py-3 px-4">
+            <div class="font-semibold text-white">{{ stop.name }}</div>
+            <div class="text-slate-400 text-[11px]">{{ stop.address }}, {{ stop.city }}, {{ stop.state }}</div>
+          </td>
+          <td class="py-3 px-4 text-right font-mono text-slate-200">
+            Mile {{ stop.distance_from_start_miles }}
+          </td>
+          <td class="py-3 px-4 text-right font-mono text-slate-300">
+            {{ stop.leg_distance_miles }} mi
+          </td>
+          <td class="py-3 px-4 text-right font-mono font-semibold text-emerald-400">
+            ${{ stop.price_per_gallon|floatformat:3 }}/gal
+          </td>
+          <td class="py-3 px-4 text-right font-mono text-slate-200">
+            {{ stop.gallons_purchased }} gal
+          </td>
+          <td class="py-3 px-4 text-right font-mono font-bold text-white">
+            ${{ stop.cost }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<!-- Map Visualization & GeoJSON Export Card -->
+<div class="bg-slate-800/80 border border-slate-700 rounded-xl p-5 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+  <div>
+    <h4 class="font-bold text-sm text-white flex items-center space-x-2">
+      <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+      </svg>
+      <span>GeoJSON Highway Route</span>
+    </h4>
+    <p class="text-xs text-slate-400 mt-0.5">
+      Valid GeoJSON LineString ({{ data.route_geojson.coordinates|length }} points). Copy and paste directly into geojson.io to view the interactive map.
+    </p>
+  </div>
+
+  <div class="flex items-center space-x-2 w-full sm:w-auto">
+    <!-- Hidden textarea containing raw GeoJSON for clipboard copy -->
+    <textarea id="raw-geojson" class="hidden">{{ geojson_str }}</textarea>
+
+    <button id="copy-geojson-btn" type="button" onclick="copyGeoJSON()"
+            class="flex-1 sm:flex-initial px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center space-x-1.5 border border-slate-600 shadow">
+      <svg class="w-3.5 h-3.5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+      </svg>
+      <span>Copy GeoJSON</span>
+    </button>
+
+    <a href="https://geojson.io" target="_blank" rel="noopener noreferrer"
+       class="flex-1 sm:flex-initial px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-xs font-semibold transition flex items-center justify-center space-x-1.5 shadow">
+      <span>Open geojson.io &rarr;</span>
+    </a>
+  </div>
+</div>

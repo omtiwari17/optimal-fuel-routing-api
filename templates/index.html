@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fuel Route Optimizer — Interactive Route Planner</title>
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- HTMX via CDN -->
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+  <style>
+    .htmx-indicator { display: none; }
+    .htmx-request .htmx-indicator { display: flex; }
+    .htmx-request.htmx-indicator { display: flex; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased">
+
+  <!-- Navigation Bar -->
+  <nav class="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-orange-600 flex items-center justify-center font-bold text-white shadow-lg shadow-orange-500/20">
+          <!-- Fuel Pump SVG Icon -->
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14V6a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2h8a2 2 0 002-2v-3m2-3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white">Fuel Route Optimizer</h1>
+          <p class="text-xs text-slate-400">10 MPG &bull; 500-Mile Tank Range &bull; 7,533 US Truck Stops</p>
+        </div>
+      </div>
+      <div class="flex items-center space-x-3">
+        <a href="https://geojson.io" target="_blank" rel="noopener noreferrer" class="text-xs px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 transition flex items-center space-x-1.5">
+          <!-- External Map Icon -->
+          <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+          <span>Open geojson.io</span>
+        </a>
+        <a href="/api/route/" target="_blank" class="text-xs px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-medium transition shadow-sm">
+          API Endpoint (JSON)
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Container -->
+  <main class="max-w-5xl mx-auto px-4 py-8 space-y-8">
+
+    <!-- Hero Card & Form -->
+    <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-6 sm:p-8 shadow-xl backdrop-blur">
+      <div class="max-w-2xl mb-6">
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight mb-2">
+          Calculate Driving Route &amp; Optimal Fuel Stops
+        </h2>
+        <p class="text-sm text-slate-400">
+          Enter any origin and destination across the continental United States. The system geocodes locations, fetches the driving highway corridor from OpenRouteService, matches nearby truck stops, and determines the cheapest refuel schedule.
+        </p>
+      </div>
+
+      <!-- Quick-Fill Presets -->
+      <div class="flex flex-wrap items-center gap-2 mb-6 text-xs">
+        <span class="text-slate-400 font-medium">Try Preset:</span>
+        <button type="button" onclick="fillPreset('Springfield, MO', 'Denver, CO')" class="px-2.5 py-1 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition">
+          Springfield &rarr; Denver (765 mi)
+        </button>
+        <button type="button" onclick="fillPreset('Chicago, IL', 'Indianapolis, IN')" class="px-2.5 py-1 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition">
+          Chicago &rarr; Indianapolis (&lt; 500 mi)
+        </button>
+        <button type="button" onclick="fillPreset('Miami, FL', 'Seattle, WA')" class="px-2.5 py-1 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600 transition">
+          Miami &rarr; Seattle (3,335 mi)
+        </button>
+      </div>
+
+      <!-- Route Calculation Form -->
+      <form hx-post="/ui/route/" hx-target="#results" hx-swap="innerHTML" hx-indicator="#loading" class="space-y-4">
+        {% csrf_token %}
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-4">
+          <!-- Start Input -->
+          <div class="lg:col-span-3">
+            <label for="start" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+              Start Location
+            </label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                <!-- Location Pin SVG -->
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </span>
+              <input type="text" id="start" name="start" required value="Springfield, MO"
+                     placeholder="e.g. Springfield, MO or lat, lon"
+                     class="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm">
+            </div>
+          </div>
+
+          <!-- Finish Input -->
+          <div class="lg:col-span-3">
+            <label for="finish" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+              Destination Location
+            </label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                <!-- Target Flag SVG -->
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6h-8.5l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+                </svg>
+              </span>
+              <input type="text" id="finish" name="finish" required value="Denver, CO"
+                     placeholder="e.g. Denver, CO or lat, lon"
+                     class="w-full pl-9 pr-3 py-2.5 bg-slate-900 border border-slate-600 rounded-xl text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm">
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="lg:col-span-1 flex items-end">
+            <button type="submit"
+                    class="w-full py-2.5 px-4 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-xl shadow-lg shadow-orange-500/20 transition duration-150 transform hover:-translate-y-0.5 text-sm flex items-center justify-center space-x-1">
+              <span>Calculate</span>
+              <span>&rarr;</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2 text-xs text-slate-400 pt-1">
+          <label for="corridor_radius_miles" class="cursor-pointer">Search Corridor Radius:</label>
+          <input type="number" id="corridor_radius_miles" name="corridor_radius_miles" value="10" min="1" max="50"
+                 class="w-16 px-2 py-1 bg-slate-900 border border-slate-700 rounded text-center text-white focus:ring-1 focus:ring-orange-500 focus:outline-none">
+          <span>miles from highway</span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Loading Indicator -->
+    <div id="loading" class="htmx-indicator flex-col items-center justify-center py-12 space-y-4">
+      <div class="w-10 h-10 border-4 border-orange-500/20 border-t-orange-500 rounded-full animate-spin"></div>
+      <div class="text-center">
+        <p class="text-sm font-semibold text-white">Calculating Highway Route &amp; Fuel Optimization...</p>
+        <p class="text-xs text-slate-400">Geocoding &bull; ORS Directions &bull; SQLite Corridor Search &bull; Greedy Algorithm</p>
+      </div>
+    </div>
+
+    <!-- Results Container (Target for HTMX) -->
+    <div id="results" class="space-y-6">
+      <!-- Initial Friendly State -->
+      <div class="border border-dashed border-slate-800 rounded-2xl p-8 text-center text-slate-500">
+        <p class="text-sm">Click <span class="text-orange-400 font-semibold">Calculate &rarr;</span> above to compute the driving route and discover the cheapest fuel stops.</p>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- JavaScript Helpers -->
+  <script>
+    function fillPreset(start, finish) {
+      document.getElementById('start').value = start;
+      document.getElementById('finish').value = finish;
+    }
+
+    function copyGeoJSON() {
+      const geojsonEl = document.getElementById('raw-geojson');
+      if (!geojsonEl) return;
+      navigator.clipboard.writeText(geojsonEl.value).then(() => {
+        const btn = document.getElementById('copy-geojson-btn');
+        if (btn) {
+          const original = btn.innerHTML;
+          btn.innerHTML = '<span>Copied to Clipboard!</span>';
+          btn.classList.add('bg-emerald-600', 'text-white');
+          setTimeout(() => {
+            btn.innerHTML = original;
+            btn.classList.remove('bg-emerald-600', 'text-white');
+          }, 2500);
+        }
+      }).catch(err => {
+        alert('Failed to copy GeoJSON: ' + err);
+      });
+    }
+  </script>
+</body>
+</html>

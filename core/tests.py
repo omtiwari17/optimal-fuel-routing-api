@@ -412,3 +412,66 @@ class RouteAPITestCase(TestCase):
         self.assertEqual(data['distance_miles'], 680.0)
         self.assertEqual(data['total_gallons'], 68.0)
         self.assertEqual(data['route_geojson']['type'], 'LineString')
+
+
+class FrontendViewsTestCase(TestCase):
+    """
+    Unit tests for minimal frontend views (home_view and ui_route_view).
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+
+    def test_home_view_returns_200(self):
+        """GET / returns the main interactive demo page."""
+        response = self.client.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'index.html')
+        self.assertContains(response, 'Fuel Route Optimizer')
+
+    def test_ui_route_view_error_returns_partial(self):
+        """POST /ui/route/ with missing fields returns error partial with 400 status."""
+        response = self.client.post('/ui/route/', {})
+        self.assertEqual(response.status_code, 400)
+        self.assertTemplateUsed(response, 'partials/error.html')
+        self.assertContains(response, 'Unable to Calculate Route', status_code=400)
+
+    @patch('core.views.RoutingClient')
+    def test_ui_route_view_success_returns_results_partial(self, mock_routing_client_cls):
+        """POST /ui/route/ with valid input returns results partial with metrics."""
+        FuelStation.objects.create(
+            opis_id=6001,
+            name="Midway Travel Plaza",
+            address="Exit 150",
+            city="Salina",
+            state="KS",
+            price_per_gallon=Decimal("3.059"),
+            latitude=38.8,
+            longitude=-97.6
+        )
+
+        mock_instance = MagicMock()
+        mock_instance.geocode.side_effect = [
+            (37.2, -93.3),  # Springfield
+            (39.7, -105.0), # Denver
+        ]
+        mock_instance.get_route.return_value = {
+            'distance_miles': 400.0,
+            'duration_hours': 6.0,
+            'geojson': {
+                'type': 'LineString',
+                'coordinates': [[-93.3, 37.2], [-97.6, 38.8], [-105.0, 39.7]]
+            },
+            'coordinates': [[-93.3, 37.2], [-97.6, 38.8], [-105.0, 39.7]]
+        }
+        mock_routing_client_cls.return_value = mock_instance
+
+        response = self.client.post('/ui/route/', {
+            'start': 'Springfield, MO',
+            'finish': 'Denver, CO'
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, 'partials/results.html')
+        self.assertContains(response, 'Total Distance')
+        self.assertContains(response, '400.0')
+
